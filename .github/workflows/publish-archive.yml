@@ -1,0 +1,46 @@
+name: Publish verified original archives
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: permanent-original-archives
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Subterranean-Sun/n1-archive'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout publication scripts
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Reconstruct and verify original archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/restore_snapshot.py \
+            --target original-materials \
+            --target original-answers \
+            --archive-manifest \
+            --work-dir "$RUNNER_TEMP/n1-transport"
+
+      - name: Resume draft and publish verified permanent release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/publish_archive.py --work-dir "$RUNNER_TEMP/n1-transport"
