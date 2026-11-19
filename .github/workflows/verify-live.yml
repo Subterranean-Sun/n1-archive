@@ -1,0 +1,59 @@
+name: Verify live N1 sites
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: n1-live-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'Subterranean-Sun/n1-archive'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LIVE_QA_OUTPUT_DIR: ${{ runner.temp }}/n1-live-qa-output
+      NODE_PATH: ${{ runner.temp }}/n1-live-qa-runtime/node_modules
+    steps:
+      - name: Check out verification script
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/cloud_remote_qa.cjs
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install temporary browser runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/n1-live-qa-runtime" "$LIVE_QA_OUTPUT_DIR"
+          npm install --prefix "$RUNNER_TEMP/n1-live-qa-runtime" --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+          node "$RUNNER_TEMP/n1-live-qa-runtime/node_modules/playwright/cli.js" install --with-deps chromium
+
+      - name: Verify actual HTTPS sites
+        shell: bash
+        run: node .github/scripts/cloud_remote_qa.cjs
+
+      - name: Save small report and viewport screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: n1-live-verification-${{ github.run_id }}
+          path: |
+            ${{ env.LIVE_QA_OUTPUT_DIR }}/remote-report.json
+            ${{ env.LIVE_QA_OUTPUT_DIR }}/remote-mobile-home.png
+            ${{ env.LIVE_QA_OUTPUT_DIR }}/remote-audio-segment.png
+            ${{ env.LIVE_QA_OUTPUT_DIR }}/remote-desktop-revision.png
+            ${{ env.LIVE_QA_OUTPUT_DIR }}/remote-failure.png
+          retention-days: 1
+          if-no-files-found: warn
+          compression-level: 9
